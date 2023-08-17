@@ -1,0 +1,42 @@
+---
+kind: DaemonSet
+apiVersion: apps/v1
+metadata:
+  name: volume-condition-checker
+  # replace with non-default namespace name
+  namespace: default
+  annotations:
+    app.kubernetes.io/name: volume-condition-checker
+    app.kubernetes.io/path-of: csi-addons
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: volume-condition-checker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: volume-condition-checker
+        app.kubernetes.io/path-of: csi-addons
+    spec:
+      priorityClassName: system-node-critical
+      containers:
+        - name: volume-condition-checker
+          securityContext:
+            privileged: true
+            allowPrivilegeEscalation: true
+          image: quay.io/csi-addons/volume-condition-checker:lastest
+          args:
+            - "--nodename=$(KUBE_NODE_NAME)"
+          env:
+            - name: KUBE_NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          volumeMounts:
+            - name: kubelet
+              mountPath: /var/lib/kubelet
+      volumes:
+        - name: kubelet
+          hostPath:
+            path: /var/lib/kubelet
+            type: DirectoryOrCreate

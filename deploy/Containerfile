@@ -1,0 +1,9 @@
+FROM golang:1.21 AS builder
+
+COPY . /go/src/github/csi-addons/volume-condition-checker
+WORKDIR /go/src/github/csi-addons/volume-condition-checker
+RUN CGO_ENABLED=0 go build -o /go/bin/volume-condition-checker cmd/main.go
+
+FROM scratch
+COPY --from=builder /go/bin/volume-condition-checker /
+ENTRYPOINT ["/volume-condition-checker"]
