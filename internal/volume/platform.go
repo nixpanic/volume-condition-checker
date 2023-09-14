@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"k8s.io/klog"
+	"k8s.io/mount-utils"
 )
 
 // Platform provides functions that a Driver can use to find details about the
@@ -63,6 +64,7 @@ type kubelet struct {
 	basedir    string
 	pluginPath string
 	csiPath    string
+	mounter    mount.Interface
 }
 
 // getKubelet() returns a *kubelet with default paths. Other functions could do
@@ -73,6 +75,7 @@ func getKubelet() Platform {
 		basedir:    "/var/lib/kubelet",
 		pluginPath: "/plugins",
 		csiPath:    "/kubernetes.io/csi",
+		mounter:    mount.NewWithoutSystemd("/bin/mount"),
 	}
 }
 
@@ -93,17 +96,34 @@ func (k *kubelet) GetStagingPath(driver, volumeID string) string {
 		driver,
 		fmt.Sprintf("%x", hash),
 		"globalmount",
-		volumeID,
 	)
 
-	_, err := os.Stat(stagingPath)
-	if err != nil {
-		klog.Errorf("failed to stat staging path %q: %v", stagingPath, err)
-		return ""
+	if k.isMountPoint(stagingPath) {
+		return stagingPath
 	}
 
+	// stagingPath ending with "/globalmount" is not a mountpoint. Add the
+	// volumeID to the path and check again.
+
+	stagingPath = filepath.Join(stagingPath, volumeID)
+	if k.isMountPoint(stagingPath) {
+		return stagingPath
+	}
+
+	klog.Errorf("could not find a mountpoint at %q", stagingPath)
+
 	// TODO: maybe need to check if it is a directory or blockdevice?
-	return stagingPath
+	return ""
+}
+
+func (k *kubelet) isMountPoint(path string) bool {
+	isMnt, err := k.mounter.IsMountPoint(path)
+	if err != nil {
+		klog.Errorf("failed to check if %q is a mountpoint: %v", path, err)
+		return false
+	}
+
+	return isMnt
 }
 
 // GetPublishPath tries to find the directory where the volums is mounted.
